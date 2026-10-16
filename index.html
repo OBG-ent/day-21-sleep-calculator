@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dream Cycle — Sleep Calculator</title>
+  <style>
+    /* Simple sleep calculator: find wake-up times (or bedtimes) that
+       land at the end of a full 90-minute sleep cycle, so you wake up
+       feeling rested instead of groggy mid-cycle. */
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #8b5cf6;
+      --accent-soft: #a78bfa;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: linear-gradient(160deg, #0f172a, #1e1b4b 60%, #0f172a);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid #334155;
+      border-radius: 1.25rem;
+      padding: 2rem;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+      text-align: center;
+    }
+    h1 { font-size: 1.75rem; margin-bottom: 0.25rem; }
+    h1 span { color: var(--accent-soft); }
+    .sub { color: var(--muted); font-size: 0.95rem; margin-bottom: 1.5rem; }
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+    .tabs button {
+      flex: 1; padding: 0.6rem; border-radius: 0.75rem;
+      border: 1px solid #475569; background: transparent;
+      color: var(--text); cursor: pointer; font-size: 0.9rem;
+    }
+    .tabs button.active { background: var(--accent); border-color: var(--accent); font-weight: 600; }
+    label { display: block; color: var(--muted); margin-bottom: 0.5rem; font-size: 0.9rem; }
+    input[type="time"] {
+      width: 100%; padding: 0.7rem; border-radius: 0.75rem;
+      border: 1px solid #475569; background: #0f172a;
+      color: var(--text); font-size: 1.1rem; text-align: center;
+      color-scheme: dark;
+    }
+    .now-btn {
+      margin-top: 0.75rem; width: 100%; padding: 0.7rem;
+      border-radius: 0.75rem; border: none; cursor: pointer;
+      background: var(--accent); color: white; font-size: 1rem; font-weight: 600;
+    }
+    .now-btn:hover { background: #7c3aed; }
+    .results { margin-top: 1.5rem; display: none; }
+    .results h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }
+    .times {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem;
+    }
+    .time {
+      background: #0f172a; border: 1px solid #475569;
+      border-radius: 0.75rem; padding: 0.8rem;
+    }
+    .time strong { display: block; font-size: 1.25rem; color: var(--accent-soft); }
+    .time small { color: var(--muted); }
+    .time.best { border-color: var(--accent); background: rgba(139, 92, 246, 0.12); }
+    .note { margin-top: 1rem; font-size: 0.8rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>🌙 Dream <span>Cycle</span></h1>
+    <p class="sub">Sleep smarter: wake up at the end of a full 90-minute cycle.</p>
+
+    <div class="tabs">
+      <button id="tab-bed" class="active">I know my bedtime</button>
+      <button id="tab-wake">I know my wake time</button>
+    </div>
+
+    <div id="pane-bed">
+      <label for="bedtime">What time will you fall asleep?</label>
+      <input type="time" id="bedtime" value="23:00" />
+      <button class="now-btn" id="bed-now">🌙 I go to bed NOW</button>
+    </div>
+
+    <div id="pane-wake" style="display:none">
+      <label for="waketime">What time must you wake up?</label>
+      <input type="time" id="waketime" value="07:00" />
+      <button class="now-btn" id="calc-bed">🌙 When should I sleep?</button>
+    </div>
+
+    <section class="results" id="results">
+      <h2 id="results-title"></h2>
+      <div class="times" id="times"></div>
+      <p class="note">Each option = a full sleep cycle (90 min). Highlighted is the sweet spot (7.5–8 h). Falling asleep takes ~15 min — that's already counted in.</p>
+    </section>
+  </main>
+
+  <script>
+    // One full sleep cycle is about 90 minutes. Waking mid-cycle = groggy;
+    // waking at the end of one = rested. We add 15 minutes for falling asleep.
+    const CYCLE_MIN = 90;
+    const FALL_ASLEEP_MIN = 15;
+
+    const tabBed = document.getElementById('tab-bed');
+    const tabWake = document.getElementById('tab-wake');
+    const paneBed = document.getElementById('pane-bed');
+    const paneWake = document.getElementById('pane-wake');
+    const bedtimeInput = document.getElementById('bedtime');
+    const waketimeInput = document.getElementById('waketime');
+    const results = document.getElementById('results');
+    const resultsTitle = document.getElementById('results-title');
+    const timesBox = document.getElementById('times');
+
+    // Switch between the two calculator modes
+    function setMode(mode) {
+      const bed = mode === 'bed';
+      tabBed.classList.toggle('active', bed);
+      tabWake.classList.toggle('active', !bed);
+      paneBed.style.display = bed ? 'block' : 'none';
+      paneWake.style.display = !bed ? 'block' : 'none';
+      results.style.display = 'none';
+    }
+    tabBed.addEventListener('click', () => setMode('bed'));
+    tabWake.addEventListener('click', () => setMode('wake'));
+
+    // Parse "HH:MM" from a time input into a Date set to today
+    function parseTime(value) {
+      const [h, m] = value.split(':').map(Number);
+      const d = new Date();
+      d.setHours(h, m, 0, 0);
+      return d;
+    }
+
+    // Format a Date as "7:30 AM"
+    function fmt(d) {
+      let h = d.getHours();
+      const m = String(d.getMinutes()).padStart(2, '0');
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      return `${h}:${m} ${ampm}`;
+    }
+
+    // Render the list of suggested times
+    function render(title, dates, bestIndex) {
+      resultsTitle.textContent = title;
+      timesBox.innerHTML = '';
+      dates.forEach((d, i) => {
+        const div = document.createElement('div');
+        div.className = 'time' + (i === bestIndex ? ' best' : '');
+        div.innerHTML = `<strong>${fmt(d.date)}</strong><small>${d.label}</small>`;
+        timesBox.appendChild(div);
+      });
+      results.style.display = 'block';
+    }
+
+    // Mode 1: given a bedtime, suggest wake-up times 4.5–9h later
+    function calcFromBed(start) {
+      start = new Date(start.getTime() + FALL_ASLEEP_MIN * 60000);
+      const out = [];
+      for (let cycles = 3; cycles <= 6; cycles++) {
+        const wake = new Date(start.getTime() + cycles * CYCLE_MIN * 60000);
+        out.push({ date: wake, label: `${cycles} cycles · ${(cycles * 1.5).toFixed(1)} h` });
+      }
+      render('⏰ Wake up at one of these times:', out, 2); // 5 cycles = 7.5h is the sweet spot
+    }
+
+    // Mode 2: given a wake time, suggest bedtimes 4.5–9h earlier
+    function calcFromWake(wake) {
+      const out = [];
+      for (let cycles = 6; cycles >= 3; cycles--) {
+        const bed = new Date(wake.getTime() - (cycles * CYCLE_MIN + FALL_ASLEEP_MIN) * 60000);
+        out.push({ date: bed, label: `${cycles} cycles · ${(cycles * 1.5).toFixed(1)} h` });
+      }
+      render('🛏️ Fall asleep at one of these times:', out, 1); // 5 cycles = 7.5h is the sweet spot
+    }
+
+    // Recalculate live whenever the time input changes
+    bedtimeInput.addEventListener('change', () => calcFromBed(parseTime(bedtimeInput.value)));
+    document.getElementById('bed-now').addEventListener('click', () => calcFromBed(new Date()));
+    waketimeInput.addEventListener('change', () => calcFromWake(parseTime(waketimeInput.value)));
+    document.getElementById('calc-bed').addEventListener('click', () => calcFromWake(parseTime(waketimeInput.value)));
+
+    // Show an initial answer right away
+    calcFromBed(parseTime(bedtimeInput.value));
+  </script>
+</body>
+</html>
